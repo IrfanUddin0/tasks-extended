@@ -1,0 +1,129 @@
+:root {
+  --bg: #0f0f10;
+  --text: #eaeaea;
+  --muted: #a8a8ad;
+  --line: #242529;
+  --pill-bg: #262a31;
+  --pill-text: #d9e6ff;
+}
+
+.tasks-root {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  padding: 20px 32px;
+  font-family: system-ui, sans-serif;
+}
+
+.tasks-header {
+  margin-bottom: 16px;
+}
+.tasks-title {
+  font-size: 11px;
+  letter-spacing: .14em;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.tasks-list-label {
+  font-weight: 600;
+}
+
+.tasks-add {
+  border: none;
+  background: transparent;
+  color: #9fc1ff;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: 16px;
+}
+.tasks-add:hover { color: #c6d9ff; }
+
+.tasks-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.tasks-list.nested { margin-top: 6px; padding-left: 22px; }
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--line);
+}
+.row:last-child { border-bottom: none; }
+
+.dot {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 2px solid var(--muted);
+  margin-top: 2px;
+}
+.dot--checked {
+  border-color: #5f6368;
+  background: #5f6368;
+}
+
+.row-content { flex: 1; }
+.title { font-weight: 600; }
+.title--done { color: #8b8b90; text-decoration: line-through; }
+.notes { color: var(--muted); margin-top: 4px; }
+
+.pill {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--pill-text);
+  background: var(--pill-bg);
+  padding: 6px 10px;
+  border-radius: 999px;
+}
+
+.tasks-footer {
+  margin-top: 20px;
+  display: flex;
+  gap: 12px;
+}
+.text-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.text-btn:hover { color: #fff; }
+
+.error-box {
+  margin-top: 12px;
+  padding: 10px;
+  border-radius: 8px;
+  background: #2a1212;
+  color: #ffb9b9;
+}
+.muted { color: var(--muted); }
+
+/* mount transition (same as sign-in; keeps them independent) */
+.page { opacity: 0; transform: translateY(6px); transition: opacity .28s ease, transform .28s ease; }
+.page.is-in { opacity: 1; transform: translateY(0); }
+
+.tasks-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 50%;
+  transition: background 0.2s;
+}
+.icon-btn:hover {
+  background: var(--pill-bg);
+  color: #fff;
+}

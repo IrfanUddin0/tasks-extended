@@ -1,0 +1,116 @@
+/* Fixed bar that overlays the page; scrollbar will run behind it */
+.titlebar {
+  position: fixed;            /* overlay */
+  top: 0; left: 0; right: 0;
+  z-index: 1000;
+  height: 30px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  background: #0f0f10;
+  color: #e6e6e9;
+  user-select: none;
+  font-family: system-ui, sans-serif;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+}
+
+
+/* for the whole app */
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow-y: auto;   /* still scrollable */
+}
+
+/* hide scrollbar in webkit (chromium/tauri uses this) */
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none;
+}
+
+/* hide scrollbar in firefox */
+html, body {
+  scrollbar-width: none;   /* firefox */
+}
+
+
+
+/* The area you can drag. Keep this as a sibling of controls. */
+.titlebar-left,
+.titlebar .drag-region {
+  -webkit-app-region: drag;   /* ensure draggable on all platforms */
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  padding-left: 10px;
+}
+
+/* Window controls must NOT be draggable */
+.titlebar > .controls {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px 0 2px;
+}
+
+.titlebar > .controls > button {
+  color: #e6e6e9;            /* icon color (SVG should use currentColor) */
+}
+
+/* Buttons */
+.titlebar button {
+  appearance: none;
+  border: 0;
+  margin: 0;
+  padding: 0;
+
+  height: 24px;
+  width: 32px;
+  border-radius: 6px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  background: transparent;
+  cursor: pointer;
+}
+
+.titlebar button:hover {
+  background: rgba(255, 255, 255, 0.10); /* light hover without blowing out white icons */
+}
+
+.titlebar button:active {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.titlebar button:focus-visible {
+  outline: 2px solid rgba(99, 132, 255, 0.7);
+  outline-offset: 2px;
+}
+
+/* Title text (still draggable) */
+.titlebar-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: #e0e0e6;
+  pointer-events: none; /* keeps the whole left area draggable */
+}
+
+/* ---- page layout helper so content sits below the fixed bar ---- */
+.app-shell {
+  padding-top: 30px;          /* match .titlebar height */
+}
+
+/* Ensure the BODY scrolls so the scrollbar runs behind the titlebar */
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  /* let body scroll; don't set overflow on inner containers */
+}
