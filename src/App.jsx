@@ -153,6 +153,7 @@ function TasksPage({ token, onSignOut }) {
             const res = await invoke("list_google_tasks", {
                 accessToken: token.access_token,
             });
+            console.log(res);
             const list = (res?.items ?? []).map(t => ({
                 id: t.id,
                 title: t.title || "(untitled)",
