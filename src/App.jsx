@@ -8,17 +8,19 @@ import "./window.css";
 const SCOPE = "https://www.googleapis.com/auth/tasks";
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 const CLIENT_SECRET = import.meta.env.VITE_GOOGLE_CLIENT_SECRET;
+
 const appWindow = getCurrentWindow();
 
-// simple hook to trigger CSS transition on mount
+// near top of the file
 function useFadeIn() {
-    const [cls, setCls] = useState("");
-    useEffect(() => {
+    const [cls, setCls] = React.useState("");
+    React.useEffect(() => {
         const id = requestAnimationFrame(() => setCls("is-in"));
         return () => cancelAnimationFrame(id);
     }, []);
     return cls;
 }
+
 
 function Titlebar() {
     return (
@@ -41,17 +43,37 @@ function Titlebar() {
     );
 }
 
-// App.jsx (structure)
 export default function App() {
     const [token, setToken] = useState(null);
+    const [booting, setBooting] = useState(true);
+
+    useEffect(() => {
+        (async () => {
+            try {
+                const t = await invoke("restore_session", {
+                    clientId: CLIENT_ID,
+                    clientSecret: CLIENT_SECRET,
+                });
+                setToken(t);
+            } catch {
+                // no stored session or refresh failed — show sign in
+            } finally {
+                setBooting(false);
+            }
+        })();
+    }, []);
+
     return (
         <>
-            <Titlebar />                           {/* fixed, outside animations */}
+            <Titlebar />
             <div className="app-shell">
-                {!token ? (
+                {booting ? null : !token ? (
                     <SignInPage onSuccess={setToken} />
                 ) : (
-                    <TasksPage token={token} onSignOut={() => setToken(null)} />
+                    <TasksPage token={token} onSignOut={async () => {
+                        await invoke("sign_out");
+                        setToken(null);
+                    }} />
                 )}
             </div>
         </>
@@ -103,69 +125,115 @@ function SignInPage({ onSuccess }) {
 }
 
 function TasksPage({ token, onSignOut }) {
-    const [roots, setRoots] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [err, setErr] = useState("");
+    const [items, setItems] = React.useState([]);   // flat
+    const [roots, setRoots] = React.useState([]);   // tree
+    const [booting, setBooting] = React.useState(true);
+    const [refreshing, setRefreshing] = React.useState(false);
+    const [err, setErr] = React.useState("");
+    const lastUpdatedRef = React.useRef(null);
     const fade = useFadeIn();
 
-    useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+    React.useEffect(() => {
+        refresh({ initial: true });
+        // refresh on focus
+        let unlisten;
+        (async () => {
+            const { appWindow } = await import("@tauri-apps/api/window");
+            unlisten = await appWindow.listen("tauri://focus", () => refresh());
+        })();
+        return () => { if (unlisten) unlisten(); };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
-    async function load() {
-        setLoading(true);
+    async function refresh({ initial = false } = {}) {
+        if (initial) setBooting(true);
         setErr("");
         try {
-            const res = await invoke("list_google_tasks", { accessToken: token.access_token });
-            const tree = buildTaskTree(res?.items ?? []);
-            setRoots(tree);
+            if (!initial && items.length) setRefreshing(true); // background state only
+            const res = await invoke("list_google_tasks", {
+                accessToken: token.access_token,
+            });
+            const list = (res?.items ?? []).map(t => ({
+                id: t.id,
+                title: t.title || "(untitled)",
+                notes: t.notes || "",
+                due: t.due || null,
+                status: t.status || "needsAction",
+                position: t.position || "",
+                parent: t.parent || null,
+            }));
+            setItems(list);
+            setRoots(buildTaskTree(list));
+            lastUpdatedRef.current = new Date();
         } catch (e) {
             setErr(String(e));
+            // keep showing stale data; no clearing
         } finally {
-            setLoading(false);
+            setBooting(false);
+            setRefreshing(false);
         }
     }
 
     return (
-        <div>
-            <div className={`tasks-root page ${fade}`}>
-                <div className="tasks-header">
-                    <div>
-                        <div className="tasks-title">TASKS</div>
-                        <div className="tasks-list-label">My Tasks ▾</div>
+        <div className={`tasks-root page ${fade}`}>
+            <div className="tasks-header">
+                <div>
+                    <div className="tasks-title">TASKS</div>
+                    <div className="tasks-list-label">
+                        My Tasks ▾
+                        {lastUpdatedRef.current && (
+                            <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>
+                                Updated {timeAgo(lastUpdatedRef.current)}
+                            </span>
+                        )}
                     </div>
-                    <button className="icon-btn" onClick={load} title="Refresh">
-                        ⟳
-                    </button>
                 </div>
+                <button
+                    className={`icon-btn ${refreshing ? "spin" : ""}`}
+                    onClick={() => refresh()}
+                    title="Refresh"
+                    aria-busy={refreshing}
+                >
+                    ⟳
+                </button>
+            </div>
 
+            {/* First ever load only shows a small message; after that we never blank the list */}
+            {booting && roots.length === 0 && <div className="muted">Loading…</div>}
+            {err && <div className="error-box">{err}</div>}
 
-                <button className="tasks-add">＋ Add a task</button>
+            {roots.length > 0 && (
+                <ul className="tasks-list">
+                    {roots.map((t) => (
+                        <TaskNode key={t.id} task={t} depth={0} />
+                    ))}
+                </ul>
+            )}
 
-                {loading && <div className="muted">Loading…</div>}
-                {err && <div className="error-box">{err}</div>}
-                {!loading && roots.length === 0 && !err && (
-                    <div className="muted">No tasks found.</div>
-                )}
+            {!booting && !err && roots.length === 0 && (
+                <div className="muted">No tasks found.</div>
+            )}
 
-                {!loading && roots.length > 0 && (
-                    <ul className="tasks-list">
-                        {roots.map((t) => (
-                            <TaskNode key={t.id} task={t} depth={0} />
-                        ))}
-                    </ul>
-                )}
-
-                <div className="tasks-footer">
-                    <button className="text-btn" onClick={onSignOut}>Sign out</button>
-                </div>
+            <div className="tasks-footer">
+                <button className="text-btn" onClick={onSignOut}>Sign out</button>
             </div>
         </div>
-
     );
 }
 
+
 /* --------- helpers (same as before) ---------- */
-function normalizeTask(t) { return { id: t.id, title: t.title || "(untitled)", notes: t.notes || "", due: t.due || null, status: t.status || "needsAction", position: t.position || "", parent: t.parent || null, children: [] } }
-function buildTaskTree(items) { const byId = new Map(items.map(t => [t.id, normalizeTask(t)])); const roots = []; for (const task of byId.values()) { if (task.parent && byId.has(task.parent)) byId.get(task.parent).children.push(task); else roots.push(task) } const sort = (a, b) => (a.position || "").localeCompare(b.position || ""); (function rec(ns) { ns.sort(sort); ns.forEach(n => rec(n.children)) })(roots); return roots }
+function buildTaskTree(list) {
+    const byId = new Map(list.map(t => [t.id, { ...t, children: [] }]));
+    const roots = [];
+    for (const t of byId.values()) {
+        if (t.parent && byId.has(t.parent)) byId.get(t.parent).children.push(t);
+        else roots.push(t);
+    }
+    const sort = (a, b) => (a.position || "").localeCompare(b.position || "");
+    (function walk(ns) { ns.sort(sort); ns.forEach(n => walk(n.children)); })(roots);
+    return roots;
+}
 function TaskNode({ task, depth }) {
     const isCompleted = task.status === "completed";
     return (
@@ -177,13 +245,12 @@ function TaskNode({ task, depth }) {
                 {task.notes && <div className="notes">{task.notes}</div>}
                 {task.children.length > 0 && (
                     <ul className="tasks-list nested">
-                        {task.children.map((ch) => (
-                            <TaskNode key={ch.id} task={ch} depth={depth + 1} />
-                        ))}
+                        {task.children.map(ch => <TaskNode key={ch.id} task={ch} depth={depth + 1} />)}
                     </ul>
                 )}
             </div>
         </li>
     );
 }
-function formatDue(iso) { try { const d = new Date(iso); return d.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) } catch { return iso } }
+function formatDue(iso) { try { const d = new Date(iso); return d.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); } catch { return iso; } }
+function timeAgo(date) { const s = Math.floor((Date.now() - date.getTime()) / 1000); if (s < 60) return "just now"; const m = Math.floor(s / 60); if (m < 60) return m + "m ago"; const h = Math.floor(m / 60); if (h < 24) return h + "h ago"; const d = Math.floor(h / 24); return d + "d ago"; }

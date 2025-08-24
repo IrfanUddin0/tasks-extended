@@ -1,3 +1,4 @@
+use keyring::Entry;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -75,6 +76,30 @@ fn parse_code_from_request(stream: &TcpStream) -> Option<String> {
     None
 }
 
+const SERVICE: &str = "com.irfanuddin.tasks"; // pick a stable id for your app
+const ACCOUNT: &str = "google_tasks_refresh"; // key name for the stored token
+
+fn save_refresh_token(refresh: &str) -> Result<(), String> {
+    Entry::new(SERVICE, ACCOUNT)
+        .map_err(|e| format!("keyring: {e}"))?
+        .set_password(refresh)
+        .map_err(|e| format!("keyring set: {e}"))
+}
+
+fn load_refresh_token() -> Result<String, String> {
+    Entry::new(SERVICE, ACCOUNT)
+        .map_err(|e| format!("keyring: {e}"))?
+        .get_password()
+        .map_err(|e| format!("keyring get: {e}"))
+}
+
+fn delete_refresh_token() -> Result<(), String> {
+    Entry::new(SERVICE, ACCOUNT)
+        .map_err(|e| format!("keyring: {e}"))?
+        .delete_password()
+        .map_err(|e| format!("keyring del: {e}"))
+}
+
 #[tauri::command]
 pub async fn oauth_start_loopback(
     client_id: String,
@@ -140,7 +165,59 @@ pub async fn oauth_start_loopback(
         return Err(format!("token exchange {}: {}", status, txt));
     }
 
-    resp.json::<TokenResponse>()
+    let token = resp
+        .json::<TokenResponse>()
         .await
-        .map_err(|e| format!("decode token: {e}"))
+        .map_err(|e| format!("decode token: {e}"))?;
+
+    // Persist refresh_token for next launches
+    if let Some(ref rt) = token.refresh_token {
+        let _ = save_refresh_token(rt); // ignore errors silently or return Err if you prefer
+    }
+
+    Ok(token)
+}
+
+#[tauri::command]
+pub async fn restore_session(
+    client_id: String,
+    client_secret: String,
+) -> Result<TokenResponse, String> {
+    // Try to read refresh_token from keychain
+    let refresh = load_refresh_token()?;
+
+    // Exchange refresh_token for a new access_token
+    let resp = Client::new()
+        .post("https://oauth2.googleapis.com/token")
+        .form(&[
+            ("client_id", client_id.as_str()),
+            ("client_secret", client_secret.as_str()),
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refresh.as_str()),
+        ])
+        .send()
+        .await
+        .map_err(|e| format!("refresh req: {e}"))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let txt = resp.text().await.unwrap_or_default();
+        return Err(format!("refresh {}: {}", status, txt));
+    }
+
+    // Google often doesn't return refresh_token on refresh; include the one we used
+    let mut token = resp
+        .json::<TokenResponse>()
+        .await
+        .map_err(|e| format!("decode refresh: {e}"))?;
+    if token.refresh_token.is_none() {
+        token.refresh_token = Some(refresh);
+    }
+
+    Ok(token)
+}
+
+#[tauri::command]
+pub async fn sign_out() -> Result<(), String> {
+    delete_refresh_token()
 }
